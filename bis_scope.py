@@ -2,6 +2,17 @@
 # -*- coding: utf-8 -*-
 """
 BIS Vista EEG "oscilloscope" viewer — folder-autodetect + midline offset + extra SPA fields
+
+Adds SPA fields:
+- MF (median frequency) from column index 37 (python-corrected)
+- BSR (burst suppression ratio) from column index 35 (python-corrected)
+- Suppression Time from column index 48 (python-corrected)
+
+Other features:
+- Autodetect .r2a in current folder (prompt if multiple), optional matching .spa
+- Midline offset slider for asymmetric y-limits, plus fixed scale slider (10..1000 µV)
+- Time slider, real-time play at 1s/s, channel toggle (Ch1, Ch2, Both)
+- Console SPA summary toggle via SHOW_SPA_SUMMARY
 """
 
 from __future__ import annotations
@@ -11,7 +22,7 @@ import math
 from pathlib import Path
 import csv
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Tuple, Optional
 
 import numpy as np
 
@@ -42,13 +53,13 @@ def parse_spa_with_headers(spa_path: Path):
     """
     headers: Optional[List[str]] = None
     timestamps: List[str] = []
-    bis_cols = [[], [], []]
-    sef_vals = []
-    mf_vals = []
-    pow_vals = []
-    emg_vals = []
-    sr_vals = []
-    st_vals = []
+    bis_cols: List[List[float]] = [[], [], []]
+    sef_vals: List[float] = []
+    mf_vals: List[float] = []
+    pow_vals: List[float] = []
+    emg_vals: List[float] = []
+    sr_vals: List[float] = []
+    st_vals: List[float] = []
 
     def _to_float_or_nan(s: str) -> float:
         try:
@@ -59,6 +70,7 @@ def parse_spa_with_headers(spa_path: Path):
 
     try:
         with spa_path.open("r", encoding="utf-8", errors="replace") as f:
+            # read first two header lines
             header1 = f.readline()
             header2 = f.readline()
             headers = [h.strip() for h in header2.strip().split('|')] if header2 else None
@@ -70,15 +82,15 @@ def parse_spa_with_headers(spa_path: Path):
                 if len(row) < 54:
                     row = row + [''] * (54 - len(row))
 
-                # fixed column indices, python 0-based
+                # fixed column indices per Connor 2022 (+ user additions), python 0-based
                 col_t   = 0
-                col_bis = [11, 25, 39] #Channel 1, Channel 2, Channel 1 and 2
-                col_sef = 36  # spectral edge frequency (all from the averaged channel 1 and 2)
-                col_mf  = 37  # median frequency (all from the averaged channel 1 and 2)
-                col_pow = 42  # power (all from the averaged channel 1 and 2)
-                col_emg = 43  
-                col_sr  = 35  # burst suppression ratio (all from the averaged channel 1 and 2)
-                col_st  = 48  # suppression time (all from the averaged channel 1 and 2)
+                col_bis = [11, 25, 39]
+                col_sef = 36
+                col_mf  = 37  # median frequency
+                col_pow = 42
+                col_emg = 43
+                col_sr  = 35  # burst suppression ratio
+                col_st  = 48  # suppression time
 
                 timestamps.append(row[col_t])
                 for i, idx in enumerate(col_bis):
@@ -90,25 +102,25 @@ def parse_spa_with_headers(spa_path: Path):
                 sr_vals.append(_to_float_or_nan(row[col_sr]))
                 st_vals.append(_to_float_or_nan(row[col_st]))
 
-        import numpy as _np
-        BIS = _np.column_stack(bis_cols) if len(bis_cols[0]) else _np.empty((0, 3))
-        SEF = _np.asarray(sef_vals, dtype=float)
-        MF  = _np.asarray(mf_vals, dtype=float)
-        POW = _np.asarray(pow_vals, dtype=float)
-        EMG = _np.asarray(emg_vals, dtype=float)
-        SR  = _np.asarray(sr_vals, dtype=float)
-        ST  = _np.asarray(st_vals, dtype=float)
+        BIS = np.column_stack(bis_cols) if len(bis_cols[0]) else np.empty((0, 3))
+        SEF = np.asarray(sef_vals, dtype=float)
+        MF  = np.asarray(mf_vals, dtype=float)
+        POW = np.asarray(pow_vals, dtype=float)
+        EMG = np.asarray(emg_vals, dtype=float)
+        SR  = np.asarray(sr_vals, dtype=float)
+        ST  = np.asarray(st_vals, dtype=float)
         return headers, timestamps, BIS, EMG, SEF, POW, MF, SR, ST
     except FileNotFoundError:
-        import numpy as _np
-        return None, [], _np.empty((0,3)), _np.array([]), _np.array([]), _np.array([]), _np.array([]), _np.array([]), _np.array([])
+        return None, [], np.empty((0,3)), np.array([]), np.array([]), np.array([]), np.array([]), np.array([]), np.array([])
 
 
-def print_spa_summary(headers, timestamps, BIS, EMG, SEF, POW, MF, SR, ST):
+def print_spa_summary(headers: Optional[List[str]], timestamps: List[str],
+                      BIS: np.ndarray, EMG: np.ndarray, SEF: np.ndarray, POW: np.ndarray,
+                      MF: np.ndarray, SR: np.ndarray, ST: np.ndarray):
     """Console summary of SPA columns and first-non-NaN snapshot."""
     if not SHOW_SPA_SUMMARY:
         return
-    print("\\n=== SPA SUMMARY ===")
+    print("\n=== SPA SUMMARY ===")
     if headers:
         print(f"Columns ({len(headers)}): " + ", ".join(headers))
     else:
@@ -118,31 +130,39 @@ def print_spa_summary(headers, timestamps, BIS, EMG, SEF, POW, MF, SR, ST):
     else:
         print("No SPA rows parsed.")
 
+    # find first index with any valid value
     idx = 0
-    import numpy as _np
     while idx < len(timestamps):
+        ok = False
         parts = []
-        if BIS.shape[0] > idx and not _np.all(_np.isnan(BIS[idx])):
-            parts.append("BIS=" + "/".join(["—" if _np.isnan(x) else f"{x:.0f}" for x in BIS[idx]]))
-        if SEF.size > idx and not _np.isnan(SEF[idx]):
+        if BIS.shape[0] > idx and not np.all(np.isnan(BIS[idx])):
+            parts.append("BIS=" + "/".join(["—" if np.isnan(x) else f"{x:.0f}" for x in BIS[idx]]))
+            ok = True
+        if SEF.size > idx and not np.isnan(SEF[idx]):
             parts.append(f"SEF={SEF[idx]:.1f}")
-        if MF.size > idx and not _np.isnan(MF[idx]):
+            ok = True
+        if MF.size > idx and not np.isnan(MF[idx]):
             parts.append(f"MF={MF[idx]:.1f}")
-        if POW.size > idx and not _np.isnan(POW[idx]):
+            ok = True
+        if POW.size > idx and not np.isnan(POW[idx]):
             parts.append(f"POW={POW[idx]:.1f}")
-        if EMG.size > idx and not _np.isnan(EMG[idx]):
+            ok = True
+        if EMG.size > idx and not np.isnan(EMG[idx]):
             parts.append(f"EMG={EMG[idx]:.1f}")
-        if SR.size > idx and not _np.isnan(SR[idx]):
+            ok = True
+        if SR.size > idx and not np.isnan(SR[idx]):
             parts.append(f"BSR={SR[idx]:.1f}")
-        if ST.size > idx and not _np.isnan(ST[idx]):
+            ok = True
+        if ST.size > idx and not np.isnan(ST[idx]):
             parts.append(f"SuppTime={ST[idx]:.1f}")
-        if parts:
+            ok = True
+        if ok:
             print("First non-NaN snapshot: " + ", ".join(parts))
             break
         idx += 1
     if idx == len(timestamps):
         print("All SPA values appear to be NaN or SPA missing.")
-    print("===================\\n")
+    print("===================\n")
 
 # -------------------- R2A loading --------------------
 
@@ -157,10 +177,14 @@ def load_r2a_uV(r2a_path: Path) -> np.ndarray:
 def parse_start_time(timestamps: List[str]) -> Optional[datetime]:
     if not timestamps:
         return None
-    for fmt in ("%m/%d/%Y %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S",
-                "%m/%d/%y %H:%M:%S", "%d/%m/%y %H:%M:%S"):
+    candidates = [
+        "%m/%d/%Y %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S",
+        "%m/%d/%y %H:%M:%S", "%d/%m/%y %H:%M:%S",
+    ]
+    s = timestamps[0].strip()
+    for fmt in candidates:
         try:
-            return datetime.strptime(timestamps[0].strip(), fmt)
+            return datetime.strptime(s, fmt)
         except Exception:
             continue
     return None
@@ -172,10 +196,12 @@ class EEGScopeApp:
         self.root = root
         self.root.title(f"BIS Vista EEG Scope — {r2a_path.name}")
 
+        # EEG
         self.EEGuV = load_r2a_uV(r2a_path)
         self.Nsamp = self.EEGuV.shape[1]
         self.total_s = self.Nsamp / FS_EEG
 
+        # SPA (optional)
         self.headers = None
         self.timestamps: List[str] = []
         self.BIS = np.empty((0,3))
@@ -195,17 +221,20 @@ class EEGScopeApp:
             print("Note: Matching SPA not found. Proceeding without SPA values.")
             self.start_dt = None
 
+        # State
         self.window_s = DEFAULT_WINDOW_S
         self.current_t = 0.0
         self.playing = False
         self.channel_mode = tk.StringVar(value="both")
-        self.scale_uv = tk.DoubleVar(value=200.0)
-        self.offset_uv = tk.DoubleVar(value=0.0)
+        self.scale_uv = tk.DoubleVar(value=200.0)     # half-range for symmetric scale
+        self.offset_uv = tk.DoubleVar(value=0.0)      # midline offset in µV
 
+        # Layout
         self._build_layout()
         self._update_plot()
         self._update_status_labels()
 
+    # ---- UI ----
     def _build_layout(self):
         ctrl = ttk.Frame(self.root, padding=6)
         ctrl.pack(side=tk.TOP, fill=tk.X)
@@ -249,7 +278,7 @@ class EEGScopeApp:
         fig = Figure(figsize=(10, 4), dpi=100)
         self.ax = fig.add_subplot(111)
         self.ax.set_xlabel("Time")
-               self.ax.set_ylabel("EEG (µV)")
+        self.ax.set_ylabel("EEG (µV)")
         self.line1, = self.ax.plot([], [], lw=0.8, label="Ch1")
         self.line2, = self.ax.plot([], [], lw=0.8, label="Ch2")
         self.ax.legend(loc="upper right")
@@ -286,6 +315,7 @@ class EEGScopeApp:
         self.lbl_st  = ttk.Label(stat, text="Suppression Time: —")
         self.lbl_st.pack(side=tk.LEFT, padx=10)
 
+    # ---- Callbacks ----
     def _toggle_play(self):
         self.playing = not self.playing
         if self.playing:
@@ -329,6 +359,7 @@ class EEGScopeApp:
         self._update_status_labels()
         self.root.after(int(step * 1000), self._play_loop)
 
+    # ---- Drawing ----
     def _update_plot(self):
         t0 = self.current_t
         t1 = t0 + self.window_s
@@ -403,6 +434,7 @@ class EEGScopeApp:
         self.lbl_bsr.config(text=f"BSR: {bsr}")
         self.lbl_st.config(text=f"Suppression Time: {st}")
 
+    # ---- Helpers ----
     @staticmethod
     def _fmt_time(seconds: float) -> str:
         seconds = int(max(0, seconds))
@@ -424,8 +456,7 @@ class EEGScopeApp:
     def _safe_val(arr: np.ndarray, idx: int) -> str:
         try:
             x = arr[idx]
-            import math as _m
-            return "—" if (x is None or (_m.isnan(x))) else f"{x:.1f}"
+            return "—" if (x is None or (isinstance(x, float) and math.isnan(x))) else f"{x:.1f}"
         except Exception:
             return "—"
 
@@ -436,8 +467,8 @@ def choose_r2a_in_cwd() -> Path:
     cwd = Path.cwd()
     r2as = sorted(cwd.glob("*.r2a"))
     if not r2as:
-        print("No .r2a files found in the current folder.")
-        print("Tip: open a terminal in the study folder and run: python bis_scope.py")
+        print("No .r2a files found in the current folder.\n"
+              "Tip: open a terminal in the study folder and run: python bis_scope.py")
         sys.exit(1)
     if len(r2as) == 1:
         print(f"Found R2A: {r2as[0].name}")
@@ -455,6 +486,7 @@ def choose_r2a_in_cwd() -> Path:
         print("Invalid selection. Try again.")
 
 def main():
+    # If user passed a path explicitly, respect it, else use current working directory logic.
     if len(sys.argv) >= 2:
         r2a_path = Path(sys.argv[1])
         if r2a_path.is_dir():
@@ -474,13 +506,15 @@ def main():
         print(f"Matching SPA not found: {spa_path.name}. Proceeding without SPA.")
         spa_path = None
 
+    # If SPA exists, print summary
     if spa_path is not None:
         (headers, timestamps, BIS, EMG, SEF, POW, MF, SR, ST) = parse_spa_with_headers(spa_path)
         print_spa_summary(headers, timestamps, BIS, EMG, SEF, POW, MF, SR, ST)
     else:
         if SHOW_SPA_SUMMARY:
-            print("\\n=== SPA SUMMARY ===\\nSPA missing. No variables to display.\\n===================\\n")
+            print("\n=== SPA SUMMARY ===\nSPA missing. No variables to display.\n===================\n")
 
+    # Launch GUI
     root = tk.Tk()
     try:
         app = EEGScopeApp(root, r2a_path, spa_path)
