@@ -155,27 +155,6 @@ Possible. Open an issue. A header‑driven parser can look for common labels and
 
 ---
 
-## GitHub Web Upload
-
-If you prefer not to use Git on the command line:
-
-1. Go to GitHub and create a new repository. Example name: `bis-vista-eeg-scope`. Choose **Public**.
-2. Leave the repo empty. You can add the README during upload.
-3. Open the new repo, click **Add file** then **Upload files**.
-4. Drag and drop these files from this project:
-   - `bis_scope.py`
-   - `requirements.txt`
-   - `README.md`
-   - `LICENSE`
-   - `.gitignore`
-5. Scroll down and click **Commit changes**.
-6. (Optional) Create a Release:
-   - Go to **Releases** then **Draft a new release**.
-   - Tag `v0.1.0`, title it, and attach a ZIP if you want.
-7. Add topics like `EEG`, `neuromonitoring`, `anesthesia`, `BIS` to help discovery.
-
----
-
 ## Contributing
 Issues and pull requests are welcome. Please:
 - Describe the dataset layout that caused trouble.
@@ -191,6 +170,7 @@ MIT. See [LICENSE](LICENSE).
 
 ## Acknowledgements
 The SPA column mapping and microvolt scaling are informed by Connor (2022), *Emulation of the BIS Engine*, Table 3.
+Connor CW. Emulation of the BIS engine. J Clin Monit Comput. 2022 Apr;36(2):483-492. doi: 10.1007/s10877-021-00676-2. Epub 2021 Mar 19. PMID: 33742345; PMCID: PMC8449791.
 
 ## Citation
 If this tool helps your work, you can cite it as:
