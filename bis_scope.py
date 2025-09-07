@@ -38,7 +38,7 @@ from matplotlib.figure import Figure
 FS_EEG = 128.0  # Hz, BIS Vista R2A typical
 UV_PER_STEP = 1675.42688 / 32767.0  # ≈ 0.0511 µV/step
 DEFAULT_WINDOW_S = 10.0
-SHOW_SPA_SUMMARY = True  # set False to disable console summary
+SHOW_SPA_SUMMARY = False  # set False to disable console summary
 
 # -------------------- SPA parsing --------------------
 
