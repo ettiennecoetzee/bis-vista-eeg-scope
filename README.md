@@ -40,7 +40,7 @@ A lightweight viewer for BIS Vista USB studies. It reads two‑channel EEG from 
 - Optional SPA console summary.
 
 ## Screenshots
-Add screenshots or a short GIF here to show the oscilloscope and controls.
+![EEG scope – both channels](screen_shot.png)
 
 ---
 
