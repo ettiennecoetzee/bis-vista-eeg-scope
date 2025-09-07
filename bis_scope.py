@@ -72,13 +72,13 @@ def parse_spa_with_headers(spa_path: Path):
 
                 # fixed column indices, python 0-based
                 col_t   = 0
-                col_bis = [11, 25, 39]
-                col_sef = 36
-                col_mf  = 37  # median frequency
-                col_pow = 42
-                col_emg = 43
-                col_sr  = 35  # burst suppression ratio
-                col_st  = 48  # suppression time
+                col_bis = [11, 25, 39] #Channel 1, Channel 2, Channel 1 and 2
+                col_sef = 36  # spectral edge frequency (all from the averaged channel 1 and 2)
+                col_mf  = 37  # median frequency (all from the averaged channel 1 and 2)
+                col_pow = 42  # power (all from the averaged channel 1 and 2)
+                col_emg = 43  
+                col_sr  = 35  # burst suppression ratio (all from the averaged channel 1 and 2)
+                col_st  = 48  # suppression time (all from the averaged channel 1 and 2)
 
                 timestamps.append(row[col_t])
                 for i, idx in enumerate(col_bis):
