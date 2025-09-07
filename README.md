@@ -1,8 +1,7 @@
 # BIS Vista EEG Scope (Python)
 
 A lightweight viewer for BIS Vista USB studies. It reads two‑channel EEG from `.r2a`, converts to microvolts, and displays a scrolling oscilloscope‑style plot with live processed values from the matching `.spa` file.
-
-> If you want to use the GitHub web interface only, follow the **GitHub Web Upload** section below.
+It has been tested on the newer BIS Advance system (2-channel)
 
 ---
 
