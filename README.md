@@ -139,6 +139,7 @@ Set `SHOW_SPA_SUMMARY = False` if you want a quiet launch.
 - **Tkinter missing on Linux:** install `python3-tk` with your package manager.
 - **No .r2a found:** open the terminal in the folder that actually contains the `.r2a` files, or pass a directory path to the script.
 - **SPA looks off:** column positions may differ between exports. Adjust the indices in `parse_spa_with_headers` or contact the maintainer.
+- BIS does regular ground checks. They look like flat EEG in the file but are artefact, not burst suppression. Verify with BSR and ST before concluding that suppression is present.
 
 ---
 
