@@ -71,8 +71,8 @@ pip install -r requirements.txt
 
 You can also pass a directory or a direct `.r2a` path:
 ```bash
-python bis_scope.py "F:\Dropbox\TCI\Neuromonitoring\BIS VSC\BIS2DSA Code\L07180907"
-python bis_scope.py "F:\path\to\file.r2a"
+python bis_scope.py "C:\BIS Data\Case 1"
+python bis_scope.py "C:\path\to\file.r2a"
 ```
 
 ### Controls
